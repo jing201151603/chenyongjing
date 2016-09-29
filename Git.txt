@@ -1,0 +1,15 @@
+git init;
+git add . ;
+git config user.name "username"
+git config user.email "username@XXX.com"
+git commit -m ""; //提交
+
+//上传服务器
+git remote add origin https://github.com/jing201151603/demo.git
+git push -u origin master
+
+git pull --rebase origin master  //更新最新版本
+
+//删除文件
+git rm files //删除你手动删除的文件或文件夹
+git add -A .  //原来删除的文件，在git中也会被删除
