@@ -1,0 +1,11 @@
+1.新建项目
+2.在src下新建JniUtils类实现native方法
+3.clean project-->rebuild project直到app/build/intermediates/classes目录生成
+4.打开Terminal 输入：cd app/build/intermediates/classes/debug
+5.再输入：javah -jni com.jing...JniUtils的全路径
+6.这时候classes/debug下已生成.h文件
+7.在src/main文件夹下新建jni文件夹，并把.h文件复制或剪切至该处
+8.将.h文件重命名为.c文件，在该文件中的的方法里实现逻辑（注意形参）
+9.配置ndk路径：打开Project的local.properties文件添加NDK路径；打开app的build.gradle文件，在defaultConfig节点里添加一下代码ndk{...};
+10.打开Project的gradle.properties文件,添加：android.useDeprecatedNdk=true
+11.rebuild之后会在app/build/intermediates/ndk/debug下生成.so文件。。。可以在java中调用c函数了
