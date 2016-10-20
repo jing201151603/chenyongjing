@@ -12,6 +12,9 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
 
+import com.dxhj.tianlang.utils.DensityUtil;
+import com.dxhj.tianlang.utils.LogUtils;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -25,20 +28,20 @@ public class JLockView extends View {
     private int width, height;
     private int count = 3;
     private Context context;
-    private int radiusBig = 70;
-    private int radiusSmall = 20;
+    private int radiusBig = 30;
+    private int radiusSmall = 10;
     private Point points[][] = new Point[count][count];
     private Paint smallCirclePaint;
     private Paint bigCirclePaint;
     private int bigCircleColor = Color.parseColor("#757C85");
     private int smallCircleColor = Color.GRAY;
-    private int selectCircleColor = Color.RED;
+    private int selectCircleColor = Color.parseColor("#0EAFEF");
     private int circleWidth = 2;
     private int backgroundColor = Color.parseColor("#C5A930");
 
     private Paint linePaint;
-    private int lineColor = Color.BLUE;
-    private int lineWidth = 5;
+    private int lineColor = Color.parseColor("#0EAFEF");
+    private int lineWidth = 2;
     private float startX;
     private float startY;
     private float currentX;
@@ -56,6 +59,10 @@ public class JLockView extends View {
     private boolean isEnable = true;//是否可用
     private boolean showLine = true;//是否显示线
     private WindowManager windowManager;
+    private boolean isRight = true;//判断密码输入是否正确，默认是正确的
+    private boolean isUp = false;//判断绘画是否完成，完成后最后选中的点往后的线删除
+    float lastX = 0, lastY = 0;
+    private Point currentPoints[][];//当密码输入错误时，用于临时放置选中密码
 
 
     private Context getJContext() {
@@ -84,7 +91,7 @@ public class JLockView extends View {
         windowManager = (WindowManager) getContext().getSystemService(Context.WINDOW_SERVICE);
 
         backgroundColor = attrs.getAttributeIntValue(ANDROIDXML, "background", 0);
-        warm(getClass().getName(), backgroundColor + "," + Color.WHITE);
+        warmLog(getClass().getName(), backgroundColor + "," + Color.WHITE);
 
         sharedPreferences = context.getSharedPreferences("JLockView", Context.MODE_PRIVATE);
         pwdLength = sharedPreferences.getInt(length, 0);
@@ -112,8 +119,11 @@ public class JLockView extends View {
         linePaint.setColor(lineColor);
         linePaint.setStyle(Paint.Style.STROKE);
         linePaint.setAntiAlias(true);
+        lineWidth = dip2px(context, 5);
         linePaint.setStrokeWidth(lineWidth);
 
+        radiusBig = dip2px(getJContext(), 30);
+        radiusSmall = dip2px(getJContext(), 10);
         setBackgroundColor(backgroundColor);
 
     }
@@ -122,33 +132,50 @@ public class JLockView extends View {
     @Override
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
-//        warm(getClass().getName(), "onDraw");
+
+        if (!isRight) {
+            points = currentPoints;
+            selectCircleColor = Color.RED;
+        } else
+            selectCircleColor = Color.parseColor("#0EAFEF");
         for (int i = 0; i < count; i++) {
             for (int j = 0; j < count; j++) {
                 Point point = points[i][j];
+                if (point == null) {
+                    points[i][j] = new Point(width / 2 + (dip2px(getJContext(), 100) * i - dip2px(getJContext(), 100)), dip2px(getJContext(), 100) + dip2px(getJContext(), 100) * j);
+                    point = points[i][j];
+                }
                 canvas.drawCircle(point.getPointX(), point.getPointY(), radiusBig, bigCirclePaint);
                 if (point.isSelect) {//选中情况下
+                    smallCirclePaint.setStyle(Paint.Style.FILL);
                     smallCirclePaint.setColor(selectCircleColor);
                     canvas.drawCircle(point.getPointX(), point.getPointY(), radiusSmall, smallCirclePaint);
                 } else {//没选中情况下
+                    smallCirclePaint.setStyle(Paint.Style.STROKE);
                     smallCirclePaint.setColor(smallCircleColor);
                     canvas.drawCircle(point.getPointX(), point.getPointY(), radiusSmall, smallCirclePaint);
                 }
             }
         }
 
+        while (pointList.size() > 0) {
+            if (isIncluding(pointList.get(0).getPointX(), pointList.get(0).getPointY())) break;
+            else pointList.remove(0);
+        }
+
+        //绘画线
         int sise = pointList.size();
-        if (sise > 0 && showLine) {
+        if (sise > 1 && showLine && !isUp) {
             Point pointNow = pointList.get(sise - 1);
             canvas.drawLine(startX, startY, pointNow.getPointX(), pointNow.getPointY(), linePaint);
 
-            float lastX = 0, lastY = 0;
+            lastX = 0;
+            lastY = 0;
             if (selectPointList.size() > 0) {
+                chooseLineColor();
                 for (int i = 0; i < selectPointList.size(); i++) {
                     Point point = selectPointList.get(i);
-                    if (i == 0) {
-                        canvas.drawLine(point.getPointX(), point.getPointY(), point.getPointX(), point.getPointY(), linePaint);
-                    } else {
+                    if (i > 0) {
                         point.setLastPointX(lastX);
                         point.setLastPointY(lastY);
                         canvas.drawLine(point.getLastPointX(), point.getLastPointY(), point.getPointX(), point.getPointY(), linePaint);
@@ -159,9 +186,33 @@ public class JLockView extends View {
                     startY = point.getPointY();
                 }
             }
-
+        } else if (sise > 1 && showLine && isUp) {
+            if (selectPointList.size() > 0) {
+                chooseLineColor();
+                for (int i = 1; i < selectPointList.size(); i++) {
+                    Point pointLast = selectPointList.get(i - 1);
+                    Point point = selectPointList.get(i);
+                    canvas.drawLine(pointLast.getPointX(), pointLast.getPointY(), point.getPointX(), point.getPointY(), linePaint);
+                }
+            }
         }
 
+
+        if (!isRight)
+            new Handler().postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    isRight = !isRight;
+                    clearLines();
+                }
+            }, 300);
+
+
+    }
+
+    private void chooseLineColor() {
+        if (!isRight) linePaint.setColor(Color.RED);
+        else linePaint.setColor(lineColor);
     }
 
     @Override
@@ -176,7 +227,7 @@ public class JLockView extends View {
                 points[i][j] = new Point(centerX + (dip2px(getJContext(), 100) * i - dip2px(getJContext(), 100)), dip2px(getJContext(), 100) + dip2px(getJContext(), 100) * j);
             }
         }
-        warm(getClass().getName(), "onMeasure,width=" + width + ",height=" + height);
+        warmLog(getClass().getName(), "onMeasure,width=" + width + ",height=" + height);
         setMeasuredDimension(width, width);
     }
 
@@ -184,7 +235,7 @@ public class JLockView extends View {
     @Override
     protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
         super.onLayout(changed, left, top, right, bottom);
-        warm(getClass().getName(), "onLayout");
+        warmLog(getClass().getName(), "onLayout");
     }
 
     @Override
@@ -194,18 +245,29 @@ public class JLockView extends View {
         currentY = event.getY();
         switch (event.getAction()) {
             case MotionEvent.ACTION_DOWN:
-                startX = event.getX();
-                startY = event.getY();
+                isUp = false;
+                currentPoints = null;
+                currentPoints = new Point[count][count];
                 break;
             case MotionEvent.ACTION_MOVE:
+                if (isIncluding(currentX, currentY)) {
+                    startX = currentX;
+                    startY = currentY;
+                }
                 pointList.add(new Point(currentX, currentY));
+
                 for (int i = 0; i < count; i++) {
                     for (int j = 0; j < count; j++) {
                         Point point = points[i][j];
+                        if (point == null) {
+                            points[i][j] = new Point(width / 2 + (dip2px(getJContext(), 100) * i - dip2px(getJContext(), 100)), dip2px(getJContext(), 100) + dip2px(getJContext(), 100) * j);
+                            point = points[i][j];
+                        }
                         if (isIncluding(currentX, currentY, point) && !point.isSelect) {
                             point.setSelect(true);
                             selectPointList.add(point);
                         }
+                        currentPoints[i][j] = point;
                     }
                 }
 
@@ -222,54 +284,63 @@ public class JLockView extends View {
     }
 
     private void clear() {
+        isUp = true;
         if (onJLockListener == null) {
             clearLines();
             return;
         }
+        long delayTime = 300;
+        if (isUp) delayTime = 0;
         new Handler() {
         }.postDelayed(new Runnable() {
                           @Override
                           public void run() {
-                              if (selectPointList.size() < requestPwdLength) {//密码长度不足
-                                  onJLockListener.onShort();
-                                  if (pwdType != PwdType.inputPwd)
-                                      pwdType = PwdType.setPwd;
-                              } else {
-
-
-                                  if (pwdType == PwdType.setPwd) {//设置密码
-                                      if (pwdPoints.size() > 0) pwdPoints.clear();
-                                      pwdPoints.addAll(selectPointList);
-                                      pwdType = PwdType.rePwd;
-                                      onJLockListener.onReset();
-
-                                  } else if (pwdType == PwdType.rePwd) {//确认密码
-                                      if (pwdPoints.size() != selectPointList.size()) {//两次输入的长度不一致
-                                          inputIncorrect();
-                                      } else {//两次输入密码的长度一致
-                                          if (isSame(pwdPoints, selectPointList)) {//密码一致
-                                              onJLockListener.onCreateSucceed();//密码创建成功
-                                              samePwd(pwdPoints);//储存密码
-                                          } else {
-                                              inputIncorrect();
-                                          }
-                                      }
-
-                                  } else if (pwdType == PwdType.inputPwd) {//输入手势密码
-                                      if (pwdPoints.size() == selectPointList.size() && isSame(pwdPoints, selectPointList)) {//长度一致并且任意一集合包含另一集合时，密码正确
-                                          onJLockListener.onInputPwd(true);
-                                      } else {
-                                          onJLockListener.onInputPwd(false);
-                                      }
-                                  }
-
-                              }
+                              if (judgePwd()) return;
                               clearLines();
                           }
                       }
 
-                , 300);
+                , delayTime);
 
+    }
+
+    private boolean judgePwd() {
+        if (selectPointList.size() <= 0) return true;
+        if (selectPointList.size() < requestPwdLength) {//密码长度不足
+            onJLockListener.onShort();
+            if (pwdType != PwdType.inputPwd)
+                pwdType = PwdType.setPwd;
+        } else {
+
+            if (pwdType == PwdType.setPwd) {//设置密码
+                if (pwdPoints.size() > 0) pwdPoints.clear();
+                pwdPoints.addAll(selectPointList);
+                pwdType = PwdType.rePwd;
+                onJLockListener.onReset();
+
+            } else if (pwdType == PwdType.rePwd) {//确认密码
+                if (pwdPoints.size() != selectPointList.size()) {//两次输入的长度不一致
+                    inputIncorrect();
+                } else {//两次输入密码的长度一致
+                    if (isSame(pwdPoints, selectPointList)) {//密码一致
+                        onJLockListener.onCreateSucceed();//密码创建成功
+                        samePwd(pwdPoints);//储存密码
+                    } else {
+                        inputIncorrect();
+                    }
+                }
+
+            } else if (pwdType == PwdType.inputPwd) {//输入手势密码
+                if (pwdPoints.size() == selectPointList.size() && isSame(pwdPoints, selectPointList)) {//长度一致并且任意一集合包含另一集合时，密码正确
+                    onJLockListener.onInputPwd(true);
+                } else {
+                    isRight = false;//密码输入错误，标志绘画红线
+                    onJLockListener.onInputPwd(false);
+                }
+            }
+
+        }
+        return false;
     }
 
     private void inputIncorrect() {
@@ -307,11 +378,17 @@ public class JLockView extends View {
     }
 
     private void clearLines() {
-        pointList.clear();
-        selectPointList.clear();
-        for (int i = 0; i < count; i++) {
-            for (int j = 0; j < count; j++) {
-                points[i][j].setSelect(false);
+        if (isRight) {
+            pointList.clear();
+            selectPointList.clear();
+            for (int i = 0; i < count; i++) {
+                for (int j = 0; j < count; j++) {
+                    Point point = points[i][j];
+                    if (point == null) {
+                        points[i][j] = new Point(width / 2 + (dip2px(getJContext(), 100) * i - dip2px(getJContext(), 100)), dip2px(getJContext(), 100) + dip2px(getJContext(), 100) * j);
+                    }
+                    points[i][j].setSelect(false);
+                }
             }
         }
         postInvalidate();
@@ -397,10 +474,14 @@ public class JLockView extends View {
         for (int i = 0; i < count; i++) {
             for (int j = 0; j < count; j++) {
                 Point point = points[i][j];
+                if (point == null) {
+                    points[i][j] = new Point(width / 2 + (dip2px(getJContext(), 100) * i - dip2px(getJContext(), 100)), dip2px(getJContext(), 100) + dip2px(getJContext(), 100) * j);
+                    point = points[i][j];
+                }
                 float distanceX = Math.abs(currentX - point.getPointX());
                 float distanceY = Math.abs(currentY - point.getPointY());
                 int distanceZ = (int) Math.sqrt(Math.pow(distanceX, 2) + Math.pow(distanceY, 2));
-                if (distanceZ <= radiusBig) {//你在圆内
+                if (distanceZ <= radiusBig) {//在圆内
                     return true;
                 }
             }
@@ -418,14 +499,14 @@ public class JLockView extends View {
         return (int) (dpValue * scale + 0.5f);
     }
 
-    public void warm(String tag, String msg) {
+    public void warmLog(String tag, String msg) {
         Log.w(tag, msg);
     }
 
 
     class Point {
-        float pointX, lastPointX = 0;
-        float pointY, lastPointY = 0;
+        float pointX = 0, lastPointX = 0;
+        float pointY = 0, lastPointY = 0;
         boolean isSelect = false;
 
         public Point(float pointX, float pointY) {
@@ -471,6 +552,17 @@ public class JLockView extends View {
 
         public void setLastPointY(float lastPointY) {
             this.lastPointY = lastPointY;
+        }
+
+        @Override
+        public String toString() {
+            return "Point{" +
+                    "pointX=" + pointX +
+                    ", lastPointX=" + lastPointX +
+                    ", pointY=" + pointY +
+                    ", lastPointY=" + lastPointY +
+                    ", isSelect=" + isSelect +
+                    '}';
         }
     }
 
