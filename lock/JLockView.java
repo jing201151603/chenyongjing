@@ -6,6 +6,7 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.os.Handler;
+import android.os.Message;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.view.MotionEvent;
@@ -145,15 +146,18 @@ public class JLockView extends View {
                     points[i][j] = new Point(width / 2 + (dip2px(getJContext(), 100) * i - dip2px(getJContext(), 100)), dip2px(getJContext(), 100) + dip2px(getJContext(), 100) * j);
                     point = points[i][j];
                 }
-                canvas.drawCircle(point.getPointX(), point.getPointY(), radiusBig, bigCirclePaint);
                 if (point.isSelect) {//选中情况下
                     smallCirclePaint.setStyle(Paint.Style.FILL);
                     smallCirclePaint.setColor(selectCircleColor);
-                    canvas.drawCircle(point.getPointX(), point.getPointY(), radiusSmall, smallCirclePaint);
+                    bigCirclePaint.setColor(selectCircleColor);
+                    canvas.drawCircle(point.getPointX(), point.getPointY(), radiusSmall, smallCirclePaint);//画小圆
+                    canvas.drawCircle(point.getPointX(), point.getPointY(), radiusBig, bigCirclePaint);//画大圆
                 } else {//没选中情况下
                     smallCirclePaint.setStyle(Paint.Style.STROKE);
                     smallCirclePaint.setColor(smallCircleColor);
-                    canvas.drawCircle(point.getPointX(), point.getPointY(), radiusSmall, smallCirclePaint);
+                    bigCirclePaint.setColor(smallCircleColor);
+                    canvas.drawCircle(point.getPointX(), point.getPointY(), radiusSmall, smallCirclePaint);//画小圆
+                    canvas.drawCircle(point.getPointX(), point.getPointY(), radiusBig, bigCirclePaint);//画大圆
                 }
             }
         }
@@ -197,18 +201,23 @@ public class JLockView extends View {
             }
         }
 
-
-        if (!isRight)
-            new Handler().postDelayed(new Runnable() {
-                @Override
-                public void run() {
-                    isRight = !isRight;
-                    clearLines();
-                }
-            }, 300);
-
+        if (!isRight) handler.sendEmptyMessageDelayed(100, 100);
 
     }
+
+    private Handler handler = new Handler() {
+        @Override
+        public void handleMessage(Message msg) {
+            super.handleMessage(msg);
+            switch (msg.what) {
+                case 100:
+                    isRight = !isRight;
+                    clearLines();
+                    break;
+            }
+        }
+    };
+
 
     private void chooseLineColor() {
         if (!isRight) linePaint.setColor(Color.RED);
