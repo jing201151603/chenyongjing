@@ -3,21 +3,26 @@ package com.dxhj.tianlang.views;
 import android.content.Context;
 import android.content.res.Resources;
 import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffXfermode;
+import android.graphics.RectF;
 import android.graphics.drawable.BitmapDrawable;
 import android.util.AttributeSet;
 import android.util.TypedValue;
-import android.widget.ImageView;
+
+import com.dxhj.tianlang.R;
 
 /**
  * Created by chenyongjing on 2016/2/13.
+ * <p>
+ * 圆形ImageView
  *  
  */
-public class JCircleImageView extends ImageView {
+public class JImageView extends JBaseImageView {
 
     //外圆的宽度
     private float outCircleWidth = dpToPx(2, getResources());
@@ -37,20 +42,32 @@ public class JCircleImageView extends ImageView {
 
     private Context context;
 
-    public JCircleImageView(Context context) {
+    // 圆角的弧度
+    private float mRadius = dpToPx(8, getResources());
+
+    private Type type;
+
+    private int defaultResource=0;
+
+
+    public JImageView(Context context) {
         this(context, null);
     }
 
 
-    public JCircleImageView(Context context, AttributeSet attrs) {
+    public JImageView(Context context, AttributeSet attrs) {
         this(context, attrs, 0);
     }
 
 
-    public JCircleImageView(Context context, AttributeSet attrs, int defStyleAttr) {
+    public JImageView(Context context, AttributeSet attrs, int defStyleAttr) {
         super(context, attrs, defStyleAttr);
 
         initAttrs(context, attrs, defStyleAttr);
+    }
+
+    public enum Type {
+        circle, radius, normal
     }
 
 
@@ -67,11 +84,16 @@ public class JCircleImageView extends ImageView {
      */
     private void initAttrs(Context context, AttributeSet attrs, int defStyleAttr) {
         this.context = context;
+        type = Type.normal;//默认为正常
         paint = new Paint();
         paint.setStyle(Paint.Style.STROKE);
         paint.setStrokeWidth(outCircleWidth);
         paint.setColor(outCircleColor);//颜色
         paint.setAntiAlias(true);//设置抗锯齿
+        defaultResource = attrs.getAttributeResourceValue(ANDROIDXML, "src", 0);
+        if (defaultResource == 0) {
+            defaultResource=R.mipmap.ic_launcher;
+        }
     }
 
     /**
@@ -122,7 +144,8 @@ public class JCircleImageView extends ImageView {
     protected void onDraw(Canvas canvas) {
         //加载图片
         loadImage();
-
+        if (bitmap==null)
+            bitmap= BitmapFactory.decodeResource(getResources(),defaultResource);
         if (bitmap != null) {
             //拿到最小的值(这里我们要去到最小的)
             float min = Math.min(viewWidth, viewHeigth);
@@ -130,13 +153,47 @@ public class JCircleImageView extends ImageView {
             float circleCenter = min / 2;
             bitmap = Bitmap.createScaledBitmap(bitmap, (int) min, (int) min, false);
 
-            //画图像
-            canvas.drawBitmap(createCircleBitmap(bitmap, (int) min), outCircleWidth, outCircleWidth, null);
-
-            //画圆
-            canvas.drawCircle(circleCenter + outCircleWidth, circleCenter + outCircleWidth, circleCenter, paint);
+            if (type == Type.circle) {
+                //画图像
+                canvas.drawBitmap(createCircleBitmap(bitmap, (int) min), outCircleWidth, outCircleWidth, null);
+                //画外圆
+                canvas.drawCircle(circleCenter + outCircleWidth, circleCenter + outCircleWidth, circleCenter, paint);
+            } else if (type == Type.radius)
+                canvas.drawBitmap(createRoundImage(bitmap, (int) min, (int) min), getPaddingLeft(), getPaddingTop(), null);
+            else
+                canvas.drawBitmap(bitmap, getPaddingLeft(), getPaddingTop(), null);
         }
 
+    }
+
+    public void setType(Type type) {
+        this.type = type;
+        invalidate();
+    }
+
+    public Type getType() {
+        return this.type;
+    }
+
+    /**
+     * 画圆角
+     *
+     * @param source
+     * @param width
+     * @param height
+     * @return
+     */
+    private Bitmap createRoundImage(Bitmap source, int width, int height) {
+        Paint paint = new Paint();
+        paint.setAntiAlias(true);
+        Bitmap target = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(target);
+        RectF rect = new RectF(0, 0, width, height);
+        canvas.drawRoundRect(rect, mRadius, mRadius, paint);
+        // 核心代码取两个图片的交集部分
+        paint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.SRC_IN));
+        canvas.drawBitmap(source, 0, 0, paint);
+        return target;
     }
 
 
